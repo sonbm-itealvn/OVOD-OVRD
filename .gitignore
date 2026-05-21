@@ -95,7 +95,6 @@ events.out.tfevents.*
 # Dataset cache
 .cache/
 datasets/
-data/
 tmp/
 temp/
 
