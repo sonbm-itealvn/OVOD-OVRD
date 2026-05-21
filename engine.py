@@ -105,11 +105,11 @@ def evaluate(
 
         with torch.amp.autocast("cuda", enabled=use_amp):
             outputs = model(samples)
-        loss_dict = criterion(outputs, targets)
-        weight_dict = criterion.weight_dict
-        losses = sum(
-            loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict
-        )
+            loss_dict = criterion(outputs, targets)
+            weight_dict = criterion.weight_dict
+            losses = sum(
+                loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict
+            )
 
         n_batches += 1
         for k, v in loss_dict.items():
