@@ -109,6 +109,8 @@ def get_args_parser():
     )
     parser.add_argument("--seed", default=42, type=int)
     parser.add_argument("--print_freq", default=50, type=int)
+    parser.add_argument("--resume", default="", type=str,
+                        help="Path to checkpoint .pth to resume training from.")
     return parser
 
 
@@ -226,6 +228,29 @@ def main(args):
         **dl_kw,
     )
 
+    # --- AMP GradScaler ---
+    use_amp = device.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+
+    # --- Resume from checkpoint ---
+    start_epoch = 0
+    if args.resume:
+        ckpt_path = Path(args.resume)
+        if ckpt_path.is_file():
+            print(f"Resuming from checkpoint: {ckpt_path}")
+            checkpoint = torch.load(ckpt_path, map_location=device, weights_only=False)
+            model.load_state_dict(checkpoint["model"])
+            if "optimizer" in checkpoint:
+                optimizer.load_state_dict(checkpoint["optimizer"])
+            if "lr_scheduler" in checkpoint:
+                lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
+            if "scaler" in checkpoint and use_amp:
+                scaler.load_state_dict(checkpoint["scaler"])
+            start_epoch = checkpoint.get("epoch", -1) + 1
+            print(f"Resumed at epoch {start_epoch}")
+        else:
+            print(f"WARNING: checkpoint not found: {ckpt_path}, training from scratch.")
+
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
@@ -233,8 +258,9 @@ def main(args):
     print(f"Train images: {len(dataset_train)} | Val images: {len(dataset_val)}")
     print(f"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     print(f"Using focal loss: {use_focal} | Aux loss: {bool(args.use_aux_loss)}")
+    print(f"AMP (mixed precision): {use_amp}")
 
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
         t0 = time.time()
         train_stats = train_one_epoch(
             model,
@@ -245,6 +271,7 @@ def main(args):
             epoch,
             max_norm=args.clip_max_norm,
             print_freq=args.print_freq,
+            scaler=scaler if use_amp else None,
         )
         lr_scheduler.step()
         dt = time.time() - t0
@@ -262,17 +289,20 @@ def main(args):
 
         if args.output_dir:
             checkpoint_path = Path(args.output_dir) / f"checkpoint{epoch:04}.pth"
-            torch.save(
-                {
-                    "model": model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "lr_scheduler": lr_scheduler.state_dict(),
-                    "epoch": epoch,
-                    "args": dict(vars(args)),
-                    "num_classes": int(config["num_classes"]),
-                },
-                checkpoint_path,
-            )
+            save_dict = {
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "lr_scheduler": lr_scheduler.state_dict(),
+                "epoch": epoch,
+                "args": dict(vars(args)),
+                "num_classes": int(config["num_classes"]),
+            }
+            if use_amp:
+                save_dict["scaler"] = scaler.state_dict()
+            torch.save(save_dict, checkpoint_path)
+            # Also save as latest for easy resume
+            latest_path = Path(args.output_dir) / "checkpoint_latest.pth"
+            torch.save(save_dict, latest_path)
 
         val_stats = evaluate(
             model,

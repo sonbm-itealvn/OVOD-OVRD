@@ -273,18 +273,20 @@ class SetCriterion(nn.Module):
             R = valid_rels.shape[0]
             Qr = rel_logits.shape[1]
 
-            # Relation Hungarian matching
+            # Relation Hungarian matching (vectorized)
             with torch.no_grad():
                 log_p = rel_logits[b].log_softmax(-1)
                 log_sub = sub_attn[b].log_softmax(-1)
                 log_obj = obj_attn[b].log_softmax(-1)
-                cost = torch.zeros(Qr, R, device=device)
-                for r in range(R):
-                    ps, po, pid = sub_ids[r], obj_ids[r], valid_rels[r, 2].long()
-                    if int(pid.item()) < 0 or int(pid.item()) >= num_rel_classes:
-                        cost[:, r] = 1e8
-                        continue
-                    cost[:, r] = -log_p[:, pid] - log_sub[:, ps] - log_obj[:, po]
+
+                pids = valid_rels[:, 2].long()
+                valid_pid_mask = (pids >= 0) & (pids < num_rel_classes)
+                safe_pids = pids.clamp(0, num_rel_classes - 1)
+
+                # Batched cost: (Qr, R)
+                cost = -log_p[:, safe_pids] - log_sub[:, sub_ids] - log_obj[:, obj_ids]
+                cost[:, ~valid_pid_mask] = 1e8
+
                 cost = cost.detach().cpu().numpy()
                 row, col = linear_sum_assignment(cost)
 
@@ -297,20 +299,20 @@ class SetCriterion(nn.Module):
             tgt_pred = valid_rels[col, 2].long()
             loss_p = loss_p + F.cross_entropy(matched, tgt_pred, reduction="sum")
 
-            for k in range(row.shape[0]):
-                r = int(col[k].item())
-                q = int(row[k].item())
-                ps, po = int(sub_ids[r].item()), int(obj_ids[r].item())
-                pid = valid_rels[r, 2].long()
-                if pid.item() < 0 or pid.item() >= num_rel_classes:
-                    continue
+            # Vectorized pointer loss
+            matched_sub_ids = sub_ids[col]
+            matched_obj_ids = obj_ids[col]
+            matched_pids = valid_rels[col, 2].long()
+            ptr_valid = (matched_pids >= 0) & (matched_pids < num_rel_classes)
+            if ptr_valid.any():
+                valid_rows = row[ptr_valid]
+                valid_sub = matched_sub_ids[ptr_valid]
+                valid_obj = matched_obj_ids[ptr_valid]
                 loss_ptr = loss_ptr + F.cross_entropy(
-                    sub_attn[b, q : q + 1],
-                    torch.tensor([ps], device=device),
+                    sub_attn[b][valid_rows], valid_sub, reduction="sum"
                 )
                 loss_ptr = loss_ptr + F.cross_entropy(
-                    obj_attn[b, q : q + 1],
-                    torch.tensor([po], device=device),
+                    obj_attn[b][valid_rows], valid_obj, reduction="sum"
                 )
             n_terms += int(row.numel())
 
@@ -445,15 +447,12 @@ class SetCriterion(nn.Module):
             R = valid_rels.shape[0]
             Qr = rel_logits.shape[1]
 
-            # Quick matching (reuse logic from loss_relations)
+            # Quick matching (vectorized)
             with torch.no_grad():
-                num_pred_classes = pred_text_embed.shape[0]
                 log_sub = sub_attn[b].log_softmax(-1)
                 log_obj = obj_attn[b].log_softmax(-1)
-                cost = torch.zeros(Qr, R, device=device)
-                for r in range(R):
-                    ps, po = sub_ids[r], obj_ids[r]
-                    cost[:, r] = -log_sub[:, ps] - log_obj[:, po]
+                # Batched cost: (Qr, R)
+                cost = -log_sub[:, sub_ids] - log_obj[:, obj_ids]
                 row, col = linear_sum_assignment(cost.detach().cpu().numpy())
 
             row = torch.as_tensor(row, device=device, dtype=torch.long)

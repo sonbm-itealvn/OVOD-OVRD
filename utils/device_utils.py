@@ -138,7 +138,11 @@ def describe_hardware(device: torch.device, profile: str) -> str:
 
 def dataloader_kwargs(device: torch.device, num_workers: int) -> Dict[str, Any]:
     """pin_memory chỉ bật trên CUDA; Windows CPU thường dùng num_workers=0."""
-    return {
+    kw = {
         "num_workers": num_workers,
         "pin_memory": device.type == "cuda",
     }
+    if num_workers > 0:
+        kw["persistent_workers"] = True
+        kw["prefetch_factor"] = 2
+    return kw

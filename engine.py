@@ -16,9 +16,14 @@ def train_one_epoch(
     epoch: int,
     max_norm: float = 0.0,
     print_freq: int = 50,
+    scaler: torch.amp.GradScaler = None,
 ) -> Dict[str, float]:
     model.train()
     criterion.train()
+
+    use_amp = device.type == "cuda"
+    if scaler is None and use_amp:
+        scaler = torch.amp.GradScaler("cuda")
 
     loss_meters: Dict[str, float] = {}
     n_batches = 0
@@ -27,22 +32,31 @@ def train_one_epoch(
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
-        outputs = model(samples)
-        loss_dict = criterion(outputs, targets)
-        weight_dict = criterion.weight_dict
-        losses = sum(
-            loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict
-        )
+        with torch.amp.autocast("cuda", enabled=use_amp):
+            outputs = model(samples)
+            loss_dict = criterion(outputs, targets)
+            weight_dict = criterion.weight_dict
+            losses = sum(
+                loss_dict[k] * weight_dict[k] for k in loss_dict.keys() if k in weight_dict
+            )
 
         if not math.isfinite(losses.item()):
             print("Loss is {}, stopping training".format(losses.item()))
             sys.exit(1)
 
         optimizer.zero_grad(set_to_none=True)
-        losses.backward()
-        if max_norm > 0.0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-        optimizer.step()
+        if scaler is not None:
+            scaler.scale(losses).backward()
+            if max_norm > 0.0:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            losses.backward()
+            if max_norm > 0.0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm)
+            optimizer.step()
 
         n_batches += 1
         for k, v in loss_dict.items():
@@ -83,11 +97,14 @@ def evaluate(
     rel_hits = 0
     rel_total = 0
 
+    use_amp = device.type == "cuda"
+
     for step, (samples, targets) in enumerate(data_loader):
         samples = samples.to(device)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
 
-        outputs = model(samples)
+        with torch.amp.autocast("cuda", enabled=use_amp):
+            outputs = model(samples)
         loss_dict = criterion(outputs, targets)
         weight_dict = criterion.weight_dict
         losses = sum(
