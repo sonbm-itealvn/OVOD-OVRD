@@ -1,0 +1,12 @@
+torch
+torchvision
+transformers
+timm
+scipy
+numpy
+opencv-python
+spacy
+matplotlib
+panopticapi # For COCO Panoptic Segmentation evaluation
+pycocotools # For COCO evaluation
+Pillow

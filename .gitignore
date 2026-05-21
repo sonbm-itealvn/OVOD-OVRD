@@ -1,0 +1,147 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# =========================
+# Virtual Environment
+# =========================
+venv/
+.env/
+.envrc/
+.venv/
+ENV/
+env/
+venv.bak/
+
+# =========================
+# Jupyter Notebook
+# =========================
+.ipynb_checkpoints
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.iml
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+
+# =========================
+# Environment Variables
+# =========================
+.env
+*.env
+
+# =========================
+# AI / Deep Learning
+# =========================
+
+# Model checkpoints
+checkpoints/
+weights/
+models/
+saved_models/
+runs/
+wandb/
+mlruns/
+lightning_logs/
+
+# TensorBoard
+tensorboard/
+events.out.tfevents.*
+
+# PyTorch
+*.pt
+*.pth
+*.ckpt
+
+# TensorFlow / Keras
+*.h5
+*.keras
+*.pb
+
+# ONNX / OpenVINO
+*.onnx
+*.xml
+*.bin
+
+# Dataset cache
+.cache/
+datasets/
+data/
+tmp/
+temp/
+
+# HuggingFace
+.huggingface/
+transformers_cache/
+
+# =========================
+# CUDA / GPU
+# =========================
+*.nvvp
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Testing / Coverage
+# =========================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# =========================
+# Docker
+# =========================
+docker-compose.override.yml
+
+# =========================
+# Secrets / Keys
+# =========================
+*.pem
+*.key
+*.crt
+*.p12
+
+# =========================
+# Misc
+# =========================
+*.bak
+*.tmp
+*.temp
+*.jpg
+*.png
+*.gif
